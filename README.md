@@ -1,11 +1,11 @@
-# Sproto Typescript版
+# Sproto Typescript版（无库依赖）
 
 #### 项目介绍
-Typescript版的sproto，sproto是skynet框架的一个通信模块，ts版的sproto不需要过多的依赖其他工具。像lua那样可以直接引用sproto协议。  
+本项目是基于[sealindx 的sproto-ts](https://github.com/sealindx/sproto-ts)（sproto是skynet框架的一个通信模块）的改造，使用方式与lua版保持一致，将所有js版本的工具库改造为ts版本，去除对Buffer库的依赖，方便在cocos creator3.x后版本使用。
 
-例如：
+### 使用示例
 ```ts
-let proto = `
+let c2s_proto = `
 .package {
     type 0: integer
     session 1: integer
@@ -38,32 +38,34 @@ set 3 {
 }
 `;
 
-let sp = new Sproto(proto); //加载协议内容，初始化
-let client_request = sp.attach();    //获取一个request请求的回调函数
-let req = client_request("foobar", { what: "hello", value: "lindx 不喜欢写代码" }, session); //req是一个Buffer数据类型，可以直接base64编码后发送给 skynet 服务端。
+let s2c_proto = `
+.package {
+    type 0: integer
+    session 1: integer
+}
 
-let data = sp.dispatch(req);    //这个对应于 host:dispatch(req)
-console.log(data.result);       //打印数据
+hello 1 {
+    request {
+        hi 0 : string
+    }
+    response {
+        ok 0 : boolean
+    }
+}
+`;
+
+// 客户端使用示例
+let host = new Sproto(s2c_proto); //加载协议内容，用于解析
+
+let client_request = host.attach(Sproto(c2s_proto)); //获取一个request请求的回调函数
+let session = 1
+let req = client_request("foobar", { what: "hello", value: "lindx 不喜欢写代码" }, session);
+
+let data = host.dispatch(req);
+console.log(data.result);
 
 ```
 
 
 #### 安装教程
-
-1. 需要到nodejs的buffer模块，所以首先要安装nodejs，网上有安装教程，这里就不介绍
-2. 引用buffer模块，执行　npm install -s @types/buffers
-
-#### 其他情况下
-如果是在cocos creator环境下或者其他环境下，没能装上nodejs，那么可以使用buffer目录下的buffer.js模块．  
-
-buffer目录下的文件就是直接拿nodejs　Buffer模块的源码．并在　sproto.ts　的第一行加上
-```js
-import { Buffer } from "buffer";
-```
-
-
-#### 运行
-```js
-tsc test.ts
-node test.js
-```
+直接使用即可，不用依赖nodejs的Buffer库，当然你也可以手动修改
