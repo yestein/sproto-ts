@@ -1,4 +1,4 @@
-// import {Buffer} from "./buffer/buffer";
+import {Buffer} from "./buffer/buffer";
 const gettype=Object.prototype.toString
 
 const SPROTO_TARRAY = 0x80;
@@ -95,7 +95,7 @@ function encode_uint64(v, data, data_idx, size) {
 	data[data_idx + 5] = (v >> 8) & 0xff;
 	data[data_idx + 6] = (v >> 16) & 0xff;
 	data[data_idx + 7] = (v >> 24) & 0xff;
-	
+
 	let hi =  uint64_rshift(v, 32);
 	data[data_idx + 8] = hi & 0xff;
 	data[data_idx + 9] = (hi >> 8) & 0xff;
@@ -131,7 +131,7 @@ function checkvalue(args, type: string) {
 }
 
 function uint32_to_uint64(data, data_idx: number, negative: number|boolean) {
-	if (negative === 0 || negative === false) { 
+	if (negative === 0 || negative === false) {
 		data[data_idx++] = 0;
 		data[data_idx++] = 0;
 		data[data_idx++] = 0;
@@ -185,16 +185,16 @@ class Protocol {
 }
 
 class Sproto {
-	public t: Stype[] = [];
+	public static t: Stype[] = [];
 	public p: Protocol[] = [];
 	private buffer: Buffer;
 	private sz: number;
 	private static sp_tb: Sproto[] = [];
 	public header_tmp;
 
-	constructor(public ctx: string, 
-				public __session = [], 
-				public __pack = "package", 
+	constructor(public ctx: string,
+				public __session = [],
+				public __pack = "package",
 				public __pcatch = []) {
 
 		ctx = this.common_filter(ctx);
@@ -291,7 +291,7 @@ class Sproto {
 		let errsyntax = text.match(/\n\w+[\s\n]*{/ig);
 
 		if (errsyntax) {
-			errsyntax.forEach(protoname	=> {  
+			errsyntax.forEach(protoname	=> {
 				protoname += " ... }";
 			    console.error("[sproto error]: syntax error at proto name:", protoname.replace(/\n/, ""));
 			});
@@ -303,13 +303,13 @@ class Sproto {
 				let typestr = mtype.match(/\.\w+/i);
 				if (typestr && typestr[0] != null) {
 					let stype = this.type_create(typestr);
-					this.t[stype.name] = stype;
+					Sproto.t[stype.name] = stype;
 				}
 			}
 		}
 
 		let protocols = text.match(/\w+\s+\-?\d+\s*{[\n\t\s]*(request\s*{[^{}]*})?[\n\t\s]*(response\s*{[^{}]*})?[\n\t\s]*}/ig);
-		if (isNull(protocols) === false) { 
+		if (isNull(protocols) === false) {
 			for (let i = 0; i < protocols.length; ++i) {
 				this.protocol_create(protocols[i]);
 			}
@@ -338,11 +338,11 @@ class Sproto {
 			if (checkvalue(args, "number") === null) {
 				return ERROR_TYPE;
 			}
-			
+
 			let value = v[i];
 			let sz = checkInteger(value);
 
-			if (sz === SIZEOF_INT32) { 
+			if (sz === SIZEOF_INT32) {
 				data[array_index++] = value & 0xff;
 				data[array_index++] = (value >> 8) & 0xff;
 				data[array_index++] = (value >> 16) & 0xff;
@@ -366,13 +366,13 @@ class Sproto {
 						let start8 = data_idx + 1 + j * SIZEOF_INT64;
 						let start4 = data_idx + 1 + j * SIZEOF_INT32;
 						let k = start8;
-						
+
 						for (; k < start8 + 4; ++k) {
 							data[k] = data[start4 + k - start8];
 						}
 
 						//根据第三位决定后4位是否全为 0 或者全 0xff
-						uint32_to_uint64(data, k, data[start8 + 3] & 0x80);	
+						uint32_to_uint64(data, k, data[start8 + 3] & 0x80);
 					}
 
 					array_index = (data_idx + 1) + i * SIZEOF_INT64; //重新设置 array_index 起始位置
@@ -501,7 +501,7 @@ class Sproto {
 		case "boolean":
 			sz = this.encode_boolean_array(v, args, data, data_idx + SIZEOF_LENGTH, size);
 			break;
-		default: 
+		default:
 			sz = this.encode_object_array(v, args, data, data_idx + SIZEOF_LENGTH, size);
 			break;
 		}
@@ -599,10 +599,10 @@ class Sproto {
 							return ERROR_TYPE;
 						}
 					}
-					
+
 					sz = checkInteger(tu);
 					if (sz == 4) {
-						value = tu >>> 0;						
+						value = tu >>> 0;
 						if (value < 0x7fff) {
 							value = (value + 1) * 2;
 						} else {
@@ -612,20 +612,33 @@ class Sproto {
 					} else if (sz == 8) {	//value is int64
 						sz = encode_uint64(tu, this.buffer, data, sumsz);
 					}
-					
+
 					break;
 				case "string":
 					deatail_type = checkvalue(args, "string");
 					if (deatail_type === null) {
 						return ERROR_TYPE;
 					}
-				default:
-					let isstring = deatail_type;
+				case "binary":
+					// binary 字段：用户直接传 Uint8Array / Buffer，
+					// encode 端按字节序列写入（与 string 同套编码），不转 utf8；
+					// decode 端返回 Uint8Array（与 server 端云风 sproto 把 string 当 lstring 一致）。
 					if (deatail_type === null) {
-						deatail_type = checkvalue(args, "object");
+						deatail_type = checkvalue(args, "uint8array");
 						if (deatail_type === null) {
 							return ERROR_TYPE;
 						}
+					}
+				default:
+					let isstring = deatail_type;
+					if (deatail_type === null) {
+						// 既不是 string 也不是 binary；可能是 object/结构体类型
+						const fsz2: number = this.lencode(f.type, tu, data + SIZEOF_LENGTH, null, spindex);
+						if (fsz2 < 0) {
+							return fsz2;
+						}
+						sz = fsz2;
+						break;
 					}
 
 					let fsz = 0;
@@ -727,7 +740,7 @@ class Sproto {
 
 					result[i] = hi_low_uint64(low, hi);
 					data_idx += SIZEOF_INT64;
-				}	
+				}
 			} else {
 				result = false;
 			}
@@ -846,7 +859,13 @@ class Sproto {
 				} else {
 					switch (f.type) {
 					case "string":
-						result[f.name] = buffer.toString("utf8", currentdata_idx, currentdata_idx + sz);	
+						result[f.name] = buffer.toString("utf8", currentdata_idx, currentdata_idx + sz);
+						break;
+					case "binary":
+						// 与 string 同套 wire 格式（length+bytes），但不解 utf8，原样返回 Uint8Array
+						result[f.name] = buffer.subarray
+							? buffer.subarray(currentdata_idx, currentdata_idx + sz)
+							: buffer.slice(currentdata_idx, currentdata_idx + sz);
 						break;
 					case "integer":
 						let low = this.todword(buffer, currentdata_idx);
@@ -899,7 +918,7 @@ class Sproto {
 		let header = dstidx++;
 		let notzero = 0;
 		let bits = 0;
-		
+
 		for (var i = 0; i < 8; ++i) {
 			if(srcbuffer[srcidx + i] !== 0) {
 				dstbuffer[dstidx++] = srcbuffer[srcidx + i];
@@ -942,7 +961,7 @@ class Sproto {
 			dstbuffer[start + i] = 0;
 		}
 	}
- 
+
 	pack(buffer:Buffer) {
 		const srcsz = buffer.length;
 		let dstsz = (srcsz + 2047) / 2048 * 2 + srcsz + 2;
@@ -1025,7 +1044,7 @@ class Sproto {
 		if (sz < 0) {
 			console.error("[sproto error]: Invalid unpack stream");
 			return null;
-		} 
+		}
 
 		if (sz > osz) {
 			do {
@@ -1094,7 +1113,7 @@ class Sproto {
 		}
 
 		return outidx;
-		
+
 	}
 
 	private toword(p, pos) {
@@ -1111,16 +1130,17 @@ class Sproto {
 	}
 
 	private querytype(name: string) {
-		return this.t[name];
+		return Sproto.t[name];
 	}
 
 	private vquerytype(name: string, reqdecode?) {
-		if (isNull(reqdecode)) {
-			return this.t[name];
-		} else {
-			let sp = Sproto.sp_tb[reqdecode];
-			return sp.t[name];
-		}
+		// if (isNull(reqdecode)) {
+		// 	return Sproto.t[name];
+		// } else {
+		// 	let sp = Sproto.sp_tb[reqdecode];
+		// 	return sp.t[name];
+		// }
+		return Sproto.t[name];
 	}
 
 	private queryprotocol(name: string) {
@@ -1130,8 +1150,8 @@ class Sproto {
 	private findtag(typename: string, tag: number, st?, reqdecode?) {
 		let type = null;
 		if (!isNull(reqdecode) && isNull(st)) {
-			let sp = Sproto.sp_tb[reqdecode];
-			type = sp.t[typename];
+			// let sp = Sproto.sp_tb[reqdecode];
+			type = Sproto.t[typename];
 		} else {
 			if (st) {
 				type = st;
@@ -1154,9 +1174,9 @@ class Sproto {
 		this.__pcatch = null;
 	}
 
-	attach() {
+	attach(sp: Sproto) {
 		return function (name, args, session?) {
-			let p = this.queryprotocol(name);
+			let p = sp.queryprotocol(name);
 			if (isNull(p)) {
 				console.error("[sproto error]: can't found ", name);
 				return ;
@@ -1210,7 +1230,7 @@ class Sproto {
 			} else {
 				console.error("[sproto error]: can't find protocol by tag:", header.type);
 			}
-			
+
 			let session = this.header_tmp.session;
 			if (session) {
 				return {replay: "REQUEST", name: p.name, result: result, response: gen_response(this, p.st[RESPONSE], spindex, session).bind(this)};
@@ -1246,11 +1266,6 @@ class Sproto {
 			}
 		}
 	}
-} 
+}
 
 export { Sproto };
-
-
-
-
-
